@@ -1,11 +1,47 @@
 import {app, BrowserWindow, ipcMain, session} from 'electron';
 import {join} from 'path';
+const BetterSqlite3 = require('better-sqlite3');
+
+const path = require('path');
+
+
+let dbPath;
+
+
+// create a sqlite database using better-sqlite3 all in the main process
+
+
+function isDev() {
+  return !app.isPackaged;
+}
+
+async function createDatabase() {
+  //create the database
+  if (isDev()) {
+    dbPath = join(__dirname, 'database.sqlite');
+  } else {
+    const userDataPath = app.getPath('userData');
+    dbPath = join(userDataPath, 'database.sqlite');
+  }
+  const db = new BetterSqlite3(dbPath);
+  console.log('Database created at', dbPath);
+  // send dbpath to frontend to use it in the renderer process
+  //create a table
+  db.prepare('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)').run();
+  //insert some data
+  db.prepare('INSERT INTO users (name) VALUES (?)').run('Alice');
+  db.prepare('INSERT INTO users (name) VALUES (?)').run('Bob');
+ 
+}
+ipcMain.handle('get-db-path', async () => {
+  return dbPath;
+});
 
 function createWindow () {
   const mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
-    webPreferences: {
+    webPreferences: { 
       preload: join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
@@ -21,7 +57,8 @@ function createWindow () {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await createDatabase()
   createWindow();
 
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
